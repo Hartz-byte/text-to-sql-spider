@@ -1,6 +1,8 @@
 import os
 import logging
 from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()
 
 import torch
 from transformers import Trainer, TrainingArguments, DataCollatorForLanguageModeling
@@ -20,37 +22,29 @@ logger = logging.getLogger(__name__)
 
 def main():
     cfg = load_config()
-    logger.info("Loaded config: %s", cfg)
+    logger.info("Config loaded")
 
-    # Ensure output dir exists
     output_dir = PROJECT_ROOT / cfg.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Sanity: device
     if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is not available. Ensure you installed torch with CUDA and have an NVIDIA GPU.")
+        raise RuntimeError("CUDA not available. Install torch with CUDA support.")
 
-    logger.info("CUDA device: %s", torch.cuda.get_device_name(0))
+    logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
 
-    # 1. Model & tokenizer
-    logger.info("Loading model + tokenizer with Unsloth...")
+    logger.info("Loading model + tokenizer...")
     model, tokenizer = load_model_and_tokenizer(cfg)
 
-    # 2. Data
     logger.info("Preparing datasets...")
     datasets = prepare_datasets(tokenizer, cfg)
     train_ds = datasets["train"]
     eval_ds = datasets["validation"]
 
-    logger.info("Train size: %d, Eval size: %d", len(train_ds), len(eval_ds))
-
-    # 3. Data collator
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm=False,
     )
 
-    # 4. TrainingArguments
     training_args = TrainingArguments(
         output_dir=str(output_dir),
         num_train_epochs=cfg.num_train_epochs,
@@ -72,10 +66,10 @@ def main():
         optim=cfg.optim,
         dataloader_num_workers=cfg.dataloader_num_workers,
         dataloader_pin_memory=cfg.dataloader_pin_memory,
-        report_to=cfg.report_to,  # set to "wandb" if you want
+        report_to=cfg.report_to,
+        remove_unused_columns=False,
     )
 
-    # 5. Trainer
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -85,10 +79,12 @@ def main():
         data_collator=data_collator,
     )
 
-    # 6. Train
-    logger.info("Starting training...")
+    logger.info("=" * 80)
+    logger.info("STARTING TRAINING")
+    logger.info("=" * 80)
+
     train_result = trainer.train()
-    trainer.save_model(str(output_dir))  # saves adapter (LoRA) weights
+    trainer.save_model(str(output_dir))
     tokenizer.save_pretrained(str(output_dir))
 
     metrics = train_result.metrics
@@ -97,7 +93,9 @@ def main():
     trainer.save_metrics("train", metrics)
     trainer.save_state()
 
-    logger.info("Training complete. Best model saved to %s", output_dir)
+    logger.info("=" * 80)
+    logger.info(f"✓ Training complete! Model saved to {output_dir}")
+    logger.info("=" * 80)
 
 
 if __name__ == "__main__":
