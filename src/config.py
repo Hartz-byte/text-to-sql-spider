@@ -3,15 +3,14 @@ from typing import Optional
 import yaml
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
 
 @dataclass
 class TrainingConfig:
+
     # Model / tokenizer
     base_model: str = "codellama/CodeLlama-7b-Instruct-hf"
-    max_seq_length: int = 1024  # 2048 possible, but 1024 is safer on 4GB
+    max_seq_length: int = 1024  # Keep at 1024 for 4GB VRAM
 
     # LoRA / QLoRA
     lora_r: int = 16
@@ -24,12 +23,12 @@ class TrainingConfig:
     train_split: str = "train"
     eval_split: str = "validation"
 
-    # Training
+    # Training (tuned for RTX 3050 4GB with CPU offload)
     output_dir: str = "models/codellama_spider_lora"
     num_train_epochs: int = 3
-    per_device_train_batch_size: int = 1   # 4GB GPU -> keep at 1
+    per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 2
-    gradient_accumulation_steps: int = 8   # effective batch ~8
+    gradient_accumulation_steps: int = 8
     learning_rate: float = 1e-4
     weight_decay: float = 0.01
     warmup_ratio: float = 0.03
@@ -42,15 +41,15 @@ class TrainingConfig:
     # Hardware / performance
     fp16: bool = True
     bf16: bool = False
-    gradient_checkpointing: bool = True
-    optim: str = "paged_adamw_8bit"
+    gradient_checkpointing: bool = False
+    optim: str = "adamw_torch"
 
     # Dataloader
-    dataloader_num_workers: int = 2
-    dataloader_pin_memory: bool = True
+    dataloader_num_workers: int = 0
+    dataloader_pin_memory: bool = False
 
     # Misc
-    report_to: Optional[str] = None  # "wandb" if you want
+    report_to: Optional[str] = None
 
     # Inference / generation
     gen_max_new_tokens: int = 256
@@ -59,9 +58,8 @@ class TrainingConfig:
 
 
 def load_config(config_path: Optional[str] = None) -> TrainingConfig:
-    """Optionally load overrides from a YAML file."""
+    """Load config from YAML file if exists, otherwise use defaults."""
     cfg = TrainingConfig()
-
     if config_path is None:
         config_path = PROJECT_ROOT / "config.yaml"
     else:
@@ -70,8 +68,8 @@ def load_config(config_path: Optional[str] = None) -> TrainingConfig:
     if config_path.exists():
         with open(config_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-        for k, v in data.items():
-            if hasattr(cfg, k):
-                setattr(cfg, k, v)
+            for k, v in data.items():
+                if hasattr(cfg, k):
+                    setattr(cfg, k, v)
 
     return cfg

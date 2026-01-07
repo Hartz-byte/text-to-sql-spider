@@ -1,6 +1,7 @@
 import os
 import logging
 from pathlib import Path
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -20,6 +21,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class FixedTrainer(Trainer):
+    """
+    Trainer subclass that prevents moving model to device.
+    
+    When model is loaded with device_map="auto", some params may be on
+    meta device. Trainer's _move_model_to_device() tries to call .to(device)
+    which fails on meta tensors. This patch skips that step since the model
+    is already properly placed by accelerate.
+    """
+    def _move_model_to_device(self, model, device):
+        """Skip moving model - already placed by device_map='auto'."""
+        # Do nothing - model is already on correct devices
+        return
+
+
 def main():
     cfg = load_config()
     logger.info("Config loaded")
@@ -28,11 +44,12 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if not torch.cuda.is_available():
-        raise RuntimeError("CUDA not available. Install torch with CUDA support.")
+        raise RuntimeError("CUDA not available")
+    
+    logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
+    logger.info(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
-    logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
-
-    logger.info("Loading model + tokenizer...")
+    logger.info("Loading model...")
     model, tokenizer = load_model_and_tokenizer(cfg)
 
     logger.info("Preparing datasets...")
@@ -70,7 +87,8 @@ def main():
         remove_unused_columns=False,
     )
 
-    trainer = Trainer(
+    # Use FixedTrainer instead of Trainer
+    trainer = FixedTrainer(
         model=model,
         args=training_args,
         train_dataset=train_ds,
@@ -80,7 +98,7 @@ def main():
     )
 
     logger.info("=" * 80)
-    logger.info("STARTING TRAINING")
+    logger.info("STARTING TRAINING (RTX 3050 + 16GB RAM)")
     logger.info("=" * 80)
 
     train_result = trainer.train()
@@ -91,10 +109,9 @@ def main():
     metrics["train_samples"] = len(train_ds)
     trainer.log_metrics("train", metrics)
     trainer.save_metrics("train", metrics)
-    trainer.save_state()
 
     logger.info("=" * 80)
-    logger.info(f"✓ Training complete! Model saved to {output_dir}")
+    logger.info(f"✓ Training complete! Model: {output_dir}")
     logger.info("=" * 80)
 
 

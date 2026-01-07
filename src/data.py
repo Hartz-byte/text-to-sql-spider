@@ -12,31 +12,25 @@ SYSTEM_PROMPT = (
 
 
 def build_schema_string(example: Dict[str, Any]) -> str:
-    """
-    Build a simple schema representation from Spider example.
-    """
-    if "db_schema" not in example:
-        return f"Database: {example.get('db_id', 'unknown')}\n"
-
-    schema_lines = []
-    schema = example["db_schema"]
-    for table_name, cols in schema.items():
-        col_parts = []
-        for col in cols:
-            col_name = col.get("name", "col")
-            col_type = col.get("type", "TEXT")
-            col_parts.append(f"{col_name} {col_type}")
-        schema_lines.append(f"CREATE TABLE {table_name} ({', '.join(col_parts)});")
-    return "\n".join(schema_lines)
+    """Build schema string from example."""
+    # Simple fallback: just use db_id
+    # For full schema, download original Spider files from Yale repo
+    db_id = example.get("db_id", "unknown")
+    return f"Database: {db_id}\n"
 
 
 def format_example(example: Dict[str, Any]) -> Dict[str, str]:
     """
-    Build a single training text sequence for causal LM.
+    Format Spider example into instruction-tuning format.
+    
+    Spider HF dataset fields:
+    - "question": str (natural language query)
+    - "query": str (SQL query) ← KEY: NOT "sql"
+    - "db_id": str (database identifier)
     """
     schema_str = build_schema_string(example)
     question = example["question"]
-    sql = example["sql"]
+    query = example["query"]  # ← FIX: Spider uses "query", not "sql"
 
     prompt = (
         f"<s>[INST] {SYSTEM_PROMPT}\n"
@@ -46,13 +40,13 @@ def format_example(example: Dict[str, Any]) -> Dict[str, str]:
         f"SQL:"
     )
 
-    full_text = f"{prompt} {sql}</s>"
+    full_text = f"{prompt} {query}</s>"
 
     return {"text": full_text}
 
 
 def tokenize_function(examples: Dict[str, Any], tokenizer: PreTrainedTokenizerBase, cfg: TrainingConfig):
-    """Tokenize batch of examples."""
+    """Tokenize batch."""
     return tokenizer(
         examples["text"],
         max_length=cfg.max_seq_length,
@@ -62,10 +56,8 @@ def tokenize_function(examples: Dict[str, Any], tokenizer: PreTrainedTokenizerBa
 
 
 def prepare_datasets(tokenizer: PreTrainedTokenizerBase, cfg: TrainingConfig) -> DatasetDict:
-    """
-    Load Spider, format prompts, tokenize.
-    """
-    print("Loading Spider dataset from HuggingFace...")
+    """Load Spider, format, tokenize."""
+    print("Loading Spider dataset...")
     raw = load_dataset(cfg.dataset_name)
 
     print("Formatting examples...")

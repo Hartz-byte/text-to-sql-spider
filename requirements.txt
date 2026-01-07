@@ -1,24 +1,21 @@
+# Core PyTorch (install first with CUDA 12.1)
 # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-# Hugging Face ecosystem (stable, tested for 4GB VRAM)
+# Hugging Face ecosystem (stable for RTX 3050 4GB)
 transformers==4.36.2
 datasets==2.18.0
 accelerate==0.27.2
 peft==0.8.2
 evaluate==0.4.1
 
-# Quantization + optimizer
-bitsandbytes==0.42.0
-
 # Utilities
 sqlparse==0.5.0
 pyyaml==6.0.1
 tqdm==4.66.1
+python-dotenv==1.0.0
 
 # Optional but useful
 jupyter==1.0.0
 pandas==2.1.4
 matplotlib==3.8.3
 scipy==1.13.0
-
-python-dotenv
